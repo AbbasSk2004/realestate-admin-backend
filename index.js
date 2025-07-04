@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Disable verbose console logs in production
+if (process.env.NODE_ENV === 'production') {
+  console.log = () => {};
+}
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -38,7 +42,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(morgan('dev'));
+// only use morgan HTTP logger in non-production environments
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
