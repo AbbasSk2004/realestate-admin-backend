@@ -45,10 +45,15 @@ app.use(express.urlencoded({ extended: true }));
 // Set secure HTTP headers
 app.use(helmet());
 
-// Basic rate limiting (100 requests per 15 minutes per IP)
+// Trust the first proxy so rate limiting uses the real client IP instead of Render's proxy IP
+app.set('trust proxy', 1);
+
+// Adjust rate limiting: allow more requests and expose headers
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // increase limit to 1000 requests per window per IP
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 app.use(limiter);
 
