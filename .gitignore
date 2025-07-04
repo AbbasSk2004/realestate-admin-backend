@@ -1,0 +1,16 @@
+# Node dependencies
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# dotenv files
+.env
+
+# Build output
+coverage/
+
+# Misc
+.DS_Store 
