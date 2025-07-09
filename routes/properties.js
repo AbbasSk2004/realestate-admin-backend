@@ -151,6 +151,9 @@ router.put('/:id', async (req, res) => {
       livingrooms: req.body.livingrooms,
       floor: req.body.floor,
       garden_area: req.body.garden_area,
+      plot_size: req.body.plot_size,
+      land_type: req.body.land_type,
+      zoning: req.body.zoning,
       location_url: req.body.location_url,
       features: req.body.features || existingProperty.features,
       shop_front_width: req.body.shop_front_width,
@@ -172,12 +175,12 @@ router.put('/:id', async (req, res) => {
     // });
 
     // Explicitly handle null values for numeric fields
-    ['floor', 'garden_area', 'bedrooms', 'bathrooms', 'livingrooms', 'parking_spaces', 'year_built', 'units', 'elevators', 'shop_front_width', 'storage_area', 'ceiling_height', 'loading_docks', 'meeting_rooms'].forEach(field => {
+    ['floor', 'garden_area', 'bedrooms', 'bathrooms', 'livingrooms', 'parking_spaces', 'year_built', 'units', 'elevators', 'plot_size', 'shop_front_width', 'storage_area', 'ceiling_height', 'loading_docks', 'meeting_rooms'].forEach(field => {
       if (req.body[field] === null || req.body[field] === '' || req.body[field] === undefined) {
         updateData[field] = null;
       } else {
         // Use parseInt for integer fields and parseFloat for decimal fields
-        if (['garden_area', 'shop_front_width', 'storage_area', 'ceiling_height'].includes(field)) {
+        if (['garden_area', 'plot_size', 'shop_front_width', 'storage_area', 'ceiling_height'].includes(field)) {
           updateData[field] = parseFloat(req.body[field]);
         } else if (field === 'floor') {
           // Handle floor field based on property type
@@ -208,7 +211,7 @@ router.put('/:id', async (req, res) => {
     });
 
     // Handle empty values for Farm-specific string fields
-    ['water_source', 'crop_types'].forEach(field => {
+    ['water_source', 'crop_types', 'land_type', 'zoning'].forEach(field => {
       if (req.body[field] === '' || req.body[field] === undefined) {
         updateData[field] = null;
       }
