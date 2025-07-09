@@ -238,13 +238,13 @@ router.put('/:id', async (req, res) => {
       }
     });
 
-    // Handle images separately
+    // Handle images separately (allow null/empty values to remove images)
     if (req.body.images) {
-      if (req.body.images.main) {
-        updateData.main_image = req.body.images.main;
+      if (Object.prototype.hasOwnProperty.call(req.body.images, 'main')) {
+        updateData.main_image = req.body.images.main; // can be string or null
       }
-      if (req.body.images.additional) {
-        updateData.images = req.body.images.additional;
+      if (Object.prototype.hasOwnProperty.call(req.body.images, 'additional')) {
+        updateData.images = req.body.images.additional; // can be array or [] to clear
       }
     }
 
