@@ -1,6 +1,65 @@
 const express = require('express');
 const router = express.Router();
 const { supabase, supabaseAdmin } = require('../config/database');
+const { randomUUID } = require('crypto');
+
+// Bucket name where property images are stored
+const IMAGE_BUCKET = 'property-images';
+
+// Upload a base64 image string to Supabase Storage and return the public URL
+async function uploadBase64Image(base64String, filenamePrefix = 'image') {
+  // Expect format: data:image/<ext>;base64,<data>
+  const matches = base64String.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+  if (!matches) {
+    throw new Error('Invalid image data');
+  }
+  const contentType = matches[1];
+  const base64Data = matches[2];
+
+  const fileExt = contentType.split('/')[1];
+  const fileName = `${filenamePrefix}-${randomUUID()}.${fileExt}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from(IMAGE_BUCKET)
+    .upload(fileName, Buffer.from(base64Data, 'base64'), {
+      contentType,
+      upsert: true,
+    });
+
+  if (uploadError) throw uploadError;
+
+  const {
+    data: { publicUrl },
+    error: urlError,
+  } = supabaseAdmin.storage.from(IMAGE_BUCKET).getPublicUrl(fileName);
+
+  if (urlError) throw urlError;
+
+  return publicUrl;
+}
+
+// Remove a single image given its public URL
+async function removeImageFromStorage(imageUrl) {
+  if (!imageUrl) return;
+  const idx = imageUrl.indexOf(`${IMAGE_BUCKET}/`);
+  if (idx === -1) return; // malformed URL
+  const path = imageUrl.substring(idx + IMAGE_BUCKET.length + 1);
+  await supabaseAdmin.storage.from(IMAGE_BUCKET).remove([path]);
+}
+
+// Remove multiple images
+async function removeImagesFromStorage(imageUrls = []) {
+  const paths = imageUrls
+    .map((url) => {
+      const idx = url.indexOf(`${IMAGE_BUCKET}/`);
+      if (idx === -1) return null;
+      return url.substring(idx + IMAGE_BUCKET.length + 1);
+    })
+    .filter(Boolean);
+  if (paths.length) {
+    await supabaseAdmin.storage.from(IMAGE_BUCKET).remove(paths);
+  }
+}
 
 // Get all properties
 router.get('/', async (req, res) => {
@@ -86,9 +145,35 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Handle image uploads for new property
+    let mainImageUrl = null;
+    let additionalImageUrls = [];
+
+    if (req.body.images) {
+      const { main, additional } = req.body.images;
+
+      if (main && typeof main === 'string') {
+        mainImageUrl = await uploadBase64Image(main, 'main_image');
+      }
+
+      if (Array.isArray(additional) && additional.length > 0) {
+        for (const img of additional) {
+          if (typeof img === 'string') {
+            const url = await uploadBase64Image(img, 'additional');
+            additionalImageUrls.push(url);
+          }
+        }
+      }
+
+      // Remove images from the original body to keep DB clean
+      delete req.body.images;
+    }
+
     // Ensure the property is associated with the current user unless explicitly provided
     const insertPayload = {
       ...req.body,
+      main_image: mainImageUrl,
+      images: additionalImageUrls,
       profiles_id: req.body.profiles_id || req.user?.userId,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -238,13 +323,44 @@ router.put('/:id', async (req, res) => {
       }
     });
 
-    // Handle images separately (allow null/empty values to remove images)
+    // Handle images (upload to storage / delete as needed)
     if (req.body.images) {
+      const { main, additional } = req.body.images;
+
+      // --- Main image processing ---
       if (Object.prototype.hasOwnProperty.call(req.body.images, 'main')) {
-        updateData.main_image = req.body.images.main; // can be string or null
+        if (main === null) {
+          // Delete existing main image
+          await removeImageFromStorage(existingProperty.main_image);
+          updateData.main_image = null;
+        } else if (typeof main === 'string' && main.startsWith('data:image')) {
+          // Replace with new image
+          const newMainUrl = await uploadBase64Image(main, `${existingProperty.id}-main_image`);
+          // Remove old image
+          await removeImageFromStorage(existingProperty.main_image);
+          updateData.main_image = newMainUrl;
+        }
       }
+
+      // --- Additional images processing ---
       if (Object.prototype.hasOwnProperty.call(req.body.images, 'additional')) {
-        updateData.images = req.body.images.additional; // can be array or [] to clear
+        if (Array.isArray(additional)) {
+          if (additional.length === 0) {
+            // Clear all additional images
+            await removeImagesFromStorage(existingProperty.images || []);
+            updateData.images = [];
+          } else {
+            const newUploadedUrls = [];
+            for (const img of additional) {
+              if (typeof img === 'string' && img.startsWith('data:image')) {
+                const url = await uploadBase64Image(img, `${existingProperty.id}-additional`);
+                newUploadedUrls.push(url);
+              }
+            }
+            // Append new images to existing ones
+            updateData.images = (existingProperty.images || []).concat(newUploadedUrls);
+          }
+        }
       }
     }
 
