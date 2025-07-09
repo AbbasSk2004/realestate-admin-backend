@@ -343,12 +343,20 @@ router.put('/:id', async (req, res) => {
       }
 
       // --- Additional images processing ---
+      // 1. Deletions (removeAdditional)
+      let galleryImages = existingProperty.images || [];
+      if (Object.prototype.hasOwnProperty.call(req.body.images, 'removeAdditional') && Array.isArray(req.body.images.removeAdditional)) {
+        const toRemove = req.body.images.removeAdditional;
+        await removeImagesFromStorage(toRemove);
+        galleryImages = galleryImages.filter(url => !toRemove.includes(url));
+      }
+
+      // 2. New uploads (additional)
       if (Object.prototype.hasOwnProperty.call(req.body.images, 'additional')) {
         if (Array.isArray(additional)) {
-          if (additional.length === 0) {
-            // Clear all additional images
-            await removeImagesFromStorage(existingProperty.images || []);
-            updateData.images = [];
+          if (additional.length === 0 && galleryImages.length === 0) {
+            // Special case: clear all if nothing left
+            galleryImages = [];
           } else {
             const newUploadedUrls = [];
             for (const img of additional) {
@@ -357,10 +365,14 @@ router.put('/:id', async (req, res) => {
                 newUploadedUrls.push(url);
               }
             }
-            // Append new images to existing ones
-            updateData.images = (existingProperty.images || []).concat(newUploadedUrls);
+            galleryImages = galleryImages.concat(newUploadedUrls);
           }
         }
+      }
+
+      // Persist gallery changes if any
+      if (Object.prototype.hasOwnProperty.call(req.body.images, 'removeAdditional') || (Array.isArray(additional) && additional.length)) {
+        updateData.images = galleryImages;
       }
     }
 
